@@ -19,16 +19,23 @@ export default function GroupDetails() {
   useEffect(() => {
     const fetchGroup = async () => {
       const { data, error } = await supabase
-        .from('groups')
-        .select(`
-          *,
-          group_members(
-            profile_id,
-            profile:profiles(name)
+      .from('groups')
+      .select(`
+        id,
+        name,
+        description,
+        created_at,
+        created_by,
+        group_members (
+          user_id,
+          profiles:profiles (
+            id,
+            name
           )
-        `)
-        .eq('id', params.id)
-        .single();
+        )
+      `)
+      .eq('id', params.id)
+      .single();
 
       if (error) {
         console.error('Error fetching group:', error);
@@ -61,8 +68,8 @@ export default function GroupDetails() {
             <h2 className="text-lg font-medium mb-4">Members</h2>
             <div className="space-y-2">
               {group.group_members.map((member: any) => (
-                <div key={member.profile_id} className="text-sm">
-                  {member.profile.name}
+                <div key={member.user_id} className="text-sm">
+                  {member.profiles.name}
                 </div>
               ))}
             </div>
@@ -73,7 +80,7 @@ export default function GroupDetails() {
 
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-medium">Expenses</h2>
-          <AddExpenseDialog groupId={group.id} members={group.group_members} />
+          <AddExpenseDialog groupId={group.id} />
         </div>
 
         <ExpenseList groupId={group.id} />

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,47 +23,77 @@ import {
 } from '@/components/ui/select';
 
 interface Member {
-  profile_id: string;
-  profile: {
+  user_id: string;
+  profiles: {
+    id: string;
     name: string;
-  };
+  }[];
 }
 
-interface AddExpenseDialogProps {
-  groupId: string;
-  members: Member[];
-}
-
-export default function AddExpenseDialog({ groupId, members }: AddExpenseDialogProps) {
+export default function AddExpenseDialog({ groupId }: { groupId: string }) {
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [paidBy, setPaidBy] = useState('');
+  const [members, setMembers] = useState<Member[]>([]);
+  const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchMembers = async () => {
+      try {
+        const { data: memberData, error } = await supabase
+          .from('group_members')
+          .select(`
+            user_id,
+            profiles (
+              id,
+              name
+            )
+          `)
+          .eq('group_id', groupId);
+
+        if (error) throw error;
+
+        if (memberData) {
+          setMembers(memberData as Member[]);
+          if (!paidBy && memberData.length > 0) {
+            setPaidBy(memberData[0].user_id);
+          }
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    };
+
+    fetchMembers();
+  }, [groupId, paidBy]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    setLoading(true);
+
     try {
-      const { data: expense, error: expenseError } = await supabase
+      const { data: expenseData, error: expenseError } = await supabase
         .from('expenses')
-        .insert({
-          group_id: groupId,
-          paid_by: paidBy,
-          description,
-          amount: parseFloat(amount),
-        })
+        .insert([
+          {
+            description,
+            amount: parseFloat(amount),
+            group_id: groupId,
+            paid_by: paidBy,
+            created_at: new Date().toISOString()
+          }
+        ])
         .select()
         .single();
 
       if (expenseError) throw expenseError;
 
-      // Split equally among all members
-      const splitAmount = parseFloat(amount) / members.length;
-      const splits = members.map((member) => ({
-        expense_id: expense.id,
-        profile_id: member.profile_id,
-        amount: splitAmount,
+      const splits = members.map(member => ({
+        expense_id: expenseData.id,
+        user_id: member.user_id,
+        amount: parseFloat(amount) / members.length
       }));
 
       const { error: splitsError } = await supabase
@@ -73,20 +103,20 @@ export default function AddExpenseDialog({ groupId, members }: AddExpenseDialogP
       if (splitsError) throw splitsError;
 
       toast({
-        title: 'Success',
-        description: 'Expense added successfully',
+        description: "Expense added successfully!",
       });
-
       setOpen(false);
       setDescription('');
       setAmount('');
       setPaidBy('');
-    } catch (error: any) {
+    } catch (error) {
+      console.error('Error:', error);
       toast({
-        title: 'Error',
-        description: error.message,
-        variant: 'destructive',
+        variant: "destructive",
+        description: "Failed to add expense",
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,15 +162,15 @@ export default function AddExpenseDialog({ groupId, members }: AddExpenseDialogP
               </SelectTrigger>
               <SelectContent>
                 {members.map((member) => (
-                  <SelectItem key={member.profile_id} value={member.profile_id}>
-                    {member.profile.name}
+                  <SelectItem key={member.user_id} value={member.user_id}>
+                    {member.profiles[0]?.name || 'Unnamed User'}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
-          <Button type="submit" className="w-full">
-            Add Expense
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? 'Adding...' : 'Add Expense'}
           </Button>
         </form>
       </DialogContent>

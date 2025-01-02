@@ -87,7 +87,7 @@ export default function ExpenseList({ groupId }: { groupId: string }) {
             </div>
             <div className="text-right">
               <p className="font-medium">
-                ${expense.amount.toFixed(2)}
+                ₹{expense.amount.toFixed(2)}
               </p>
               <p className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(expense.created_at), { addSuffix: true })}

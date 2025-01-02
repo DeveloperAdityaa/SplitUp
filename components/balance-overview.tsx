@@ -16,71 +16,74 @@ export default function BalanceOverview({ groupId }: { groupId: string }) {
 
   useEffect(() => {
     const calculateBalances = async () => {
-      // Get all expenses and splits for the group
-      const { data: expenses, error: expensesError } = await supabase
-        .from('expenses')
-        .select(`
-          amount,
-          paid_by,
-          expense_splits (
+      try {
+        // Get all expenses and splits for the group
+        const { data: expenses, error: expensesError } = await supabase
+          .from('expenses')
+          .select(`
+            id,
+            amount,
+            paid_by,
+            expense_splits (
+              user_id,
+              amount
+            )
+          `)
+          .eq('group_id', groupId);
+
+        if (expensesError) throw expensesError;
+
+        // Get all members with their profiles
+        const { data: members, error: membersError } = await supabase
+          .from('group_members')
+          .select(`
             user_id,
-            amount
-          )
-        `)
-        .eq('group_id', groupId);
+            profiles (
+              name
+            )
+          `)
+          .eq('group_id', groupId);
 
-      if (expensesError) {
-        console.error('Error fetching expenses:', expensesError);
-        return;
-      }
+        if (membersError) throw membersError;
 
-      // Get all members
-      const { data: members, error: membersError } = await supabase
-        .from('group_members')
-        .select(`
-          user_id,
-          profiles (
-            name
-          )
-        `)
-        .eq('group_id', groupId);
-
-      if (membersError) {
-        console.error('Error fetching members:', membersError);
-        return;
-      }
-
-      // Calculate balances
-      const balanceMap = new Map<string, number>();
-      members.forEach((member) => {
-        balanceMap.set(member.user_id, 0);
-      });
-
-      expenses.forEach((expense) => {
-        // Add the full amount to the payer's balance
-        balanceMap.set(
-          expense.paid_by,
-          (balanceMap.get(expense.paid_by) || 0) + expense.amount
-        );
-
-        // Subtract each person's share
-        expense.expense_splits.forEach((split) => {
-          balanceMap.set(
-            split.user_id,
-            (balanceMap.get(split.user_id) || 0) - split.amount
-          );
+        // Calculate balances
+        const balanceMap = new Map<string, number>();
+        
+        // Initialize balances to zero
+        members.forEach((member) => {
+          balanceMap.set(member.user_id, 0);
         });
-      });
 
-      // Convert to array with names
-      const balanceArray = members.map((member) => ({
-        user_id: member.user_id,
-        name: member.profiles.name,
-        balance: balanceMap.get(member.user_id) || 0,
-      }));
+        // Process all expenses
+        expenses?.forEach((expense) => {
+          // Add the full amount to the payer's balance
+          balanceMap.set(
+            expense.paid_by,
+            (balanceMap.get(expense.paid_by) || 0) + expense.amount
+          );
 
-      setBalances(balanceArray);
-      setLoading(false);
+          // Subtract each person's share
+          expense.expense_splits?.forEach((split) => {
+            balanceMap.set(
+              split.user_id,
+              (balanceMap.get(split.user_id) || 0) - split.amount
+            );
+          });
+        });
+
+        // Convert to array with names
+        const balanceArray = members.map((member) => ({
+          user_id: member.user_id,
+          name: member.profiles?.name || 'Unnamed User',
+          balance: Math.round((balanceMap.get(member.user_id) || 0) * 100) / 100, // Round to 2 decimal places
+        }));
+
+        setBalances(balanceArray);
+      } catch (error) {
+        console.error('Error calculating balances:', error);
+      } finally {
+        setLoading(false);
+      }
     };
 
     calculateBalances();
@@ -107,7 +110,7 @@ export default function BalanceOverview({ groupId }: { groupId: string }) {
                   : ''
               }`}
             >
-              ${balance.balance.toFixed(2)}
+              ₹{balance.balance.toFixed(2)}
             </span>
           </div>
         ))}
